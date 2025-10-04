@@ -1,0 +1,155 @@
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: example-ns
+---
+# ConfigMap (non-sensitive)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-config
+  namespace: example-ns
+data:
+  APP_PROFILE: "prod"
+  WELCOME_MSG: "Hello from k8s configmap"
+---
+# Secret (demo DB password) - using stringData for simplicity
+apiVersion: v1
+kind: Secret
+metadata:
+  name: example-secret
+  namespace: example-ns
+type: Opaque
+stringData:
+  DB_PASSWORD: "super-secret-password"
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-deployment
+  namespace: example-ns
+  labels:
+    app: example-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: example-service
+  template:
+    metadata:
+      labels:
+        app: example-service
+    spec:
+      containers:
+        - name: example-container
+          image: balaji/example-service:1.0   # Replace when applying
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_PROFILE
+              valueFrom:
+                configMapKeyRef:
+                  name: example-config
+                  key: APP_PROFILE
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: example-secret
+                  key: DB_PASSWORD
+            - name: PORT
+              value: "8080"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+---
+# ClusterIP Service (internal)
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-service
+  namespace: example-ns
+spec:
+  selector:
+    app: example-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# NodePort Service (optional) - alternative to ClusterIP
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-service-nodeport
+  namespace: example-ns
+spec:
+  type: NodePort
+  selector:
+    app: example-service
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080
+---
+# Ingress (nginx) - requires ingress addon; host -> ecommerce.local
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: example-ingress
+  namespace: example-ns
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+    - host: ecommerce.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: example-service
+                port:
+                  number: 80
+---
+# HorizontalPodAutoscaler (example)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: example-hpa
+  namespace: example-ns
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: example-deployment
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
