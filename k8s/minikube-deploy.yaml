@@ -44,7 +44,7 @@ spec:
     spec:
       containers:
         - name: example-container
-          image: balaji/example-service:1.0   # Replace when applying
+          image: balajivb25/example-service:1.0   # Replace when applying
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
